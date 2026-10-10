@@ -8,98 +8,109 @@ gsap.registerPlugin(ScrollTrigger);
 const MAP = 'https://maps.app.goo.gl/Z7iuQg7QLAbgowMh8?g_st=ac';
 const PHONE = '919503502689';
 const PACKS = [
-  {id:'modak-5', name:'Everyday sweetness', product:'Ukadiche Modak', size:5, price:225, image:'single', tag:'A LITTLE TREAT', description:'Steamed rice flour, filled with coconut and jaggery.'},
-  {id:'modak-11', name:'The family gathering', product:'Ukadiche Modak', size:11, price:495, image:'group', tag:'MADE TO SHARE', description:'The same traditional Modak, ready for your family table.'},
-  {id:'modak-21', name:'A sweet celebration', product:'Ukadiche Modak', size:21, price:945, image:'platter', tag:'FOR YOUR OCCASION', description:'A suggested larger pack for pujas and celebrations.'},
+  {id:'modak-5', name:'Traditional Modak', product:'Ukadiche Modak', size:5, price:225, image:'single', tag:'A LITTLE TREAT', description:'Steamed rice flour, filled with coconut and jaggery.'},
+  {id:'modak-11', name:'Traditional Modak', product:'Ukadiche Modak', size:11, price:495, image:'group', tag:'MADE TO SHARE', description:'The same traditional Modak, ready for your family table.'},
+  {id:'modak-21', name:'Traditional Modak', product:'Ukadiche Modak', size:21, price:945, image:'platter', tag:'FOR YOUR OCCASION', description:'Classic coconut-jaggery Modak for your occasion.'},
 ];
 const EXTRA = [
   {id:'chirota', product:'Chirota Sweet', price:'₹300–₹800', image:'chirota', description:'A sweet addition from the kitchen’s listed menu.'},
   {id:'salad', product:'Green Salad', price:'₹150–₹250', image:'salad', description:'A fresh option from the kitchen’s listed menu.'},
 ];
-const OPTIONS = [...PACKS, ...EXTRA, {id:'custom',product:'Custom Modak quantity'}, {id:'catering',product:'Catering & tiffin enquiry'}];
+const OPTIONS = [...PACKS, ...EXTRA, {id:'custom',product:'Custom Modak quantity'}, {id:'catering',product:'Catering enquiry'}, {id:'tiffin',product:'Tiffin enquiry'}];
 const money = n => `₹${n.toLocaleString('en-IN')}`;
 const localDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const localDateTime = d => `${localDate(d)}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 function Mark(){return <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 6c0 14-23 25-23 40 0 10 46 10 46 0C55 31 32 20 32 6Z"/><path d="M32 8c-8 23-13 29-13 41M32 8c8 23 13 29 13 41M32 8v44"/><path d="M6 56h52"/></svg>}
 function Order({close,product}) {
   const [selection,setSelection] = useState(product || 'modak-5');
   const [quantity,setQuantity] = useState('1');
   const [date,setDate] = useState('');
+  const [fulfilment,setFulfilment] = useState('pickup');
+  const [locality,setLocality] = useState('');
+  const [frequency,setFrequency] = useState('One day');
+  const [meal,setMeal] = useState('Lunch');
+  const [notes,setNotes] = useState('');
   const [errors,setErrors] = useState({});
   const [status,setStatus] = useState('');
-  const box = useRef(null);
-  const backdrop = useRef(null);
-  const selected = OPTIONS.find(p => p.id === selection);
-  const minDate = localDate(new Date(Date.now()+86400000));
-  const unitLabel = selected?.size ? 'Number of packs' : selection === 'custom' ? 'Number of Modaks' : 'Quantity (confirm size with kitchen)';
-  const numericQuantity = Number(quantity);
-  const estimatedTotal = selected?.size ? selected.price*numericQuantity : null;
-  const description = selected?.size ? `${selected.product}, suggested ${selected.size}-piece pack` : selected.product;
-  const message = `Namaste! I'd like to enquire about ${description}. ${unitLabel}: ${quantity}. Preferred date: ${date}. ${selected?.size ? `Indicative prototype estimate: ${money(estimatedTotal)} (not confirmed business pricing). ` : ''}Please confirm pricing, pack availability, 24-hour lead time, and pickup/delivery charges. I understand this is an enquiry, not a confirmed order. Thank you!`;
-  const href = `https://wa.me/${PHONE}?text=${encodeURIComponent(message)}`;
-  useEffect(() => {
-    const previous = document.activeElement;
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow='hidden'; box.current?.focus();
-    const viewport = window.visualViewport;
-    const resize = () => {
-      backdrop.current?.style.setProperty('--dialog-viewport',`${viewport?.height || innerHeight}px`);
-      backdrop.current?.style.setProperty('--dialog-top',`${viewport?.offsetTop || 0}px`);
-    };
-    resize(); viewport?.addEventListener('resize',resize); viewport?.addEventListener('scroll',resize);
-    const keydown = e => {
-      if(e.key==='Escape') close();
-      if(e.key==='Tab') {
-        const nodes=[...box.current.querySelectorAll('button:not(:disabled),a[href],input,select')].filter(n=>n.getClientRects().length);
+  const box = useRef(null),backdrop=useRef(null);
+  const selected = OPTIONS.find(p=>p.id===selection);
+  const isCatering=selection==='catering',isTiffin=selection==='tiffin';
+  const isService=isCatering||isTiffin;
+  const needsArea=isService||fulfilment==='delivery';
+  const unitLabel=selected?.size?'Number of packs':selection==='custom'?'Number of Modaks':selection==='chirota'?'Desired weight (grams)':selection==='salad'?'Number of servings':isCatering?'Expected guests':'People per meal';
+  const dateLabel=isCatering?'Event date & time':isTiffin?'First meal date & time':'Preferred pickup / delivery time';
+  const minTime=localDateTime(new Date(Math.ceil((Date.now()+86400000)/60000)*60000));
+  const numericQuantity=Number(quantity);
+  const estimatedTotal=selected?.size?selected.price*numericQuantity:null;
+  const description=selected?.size?`${selected.product}, enquiry for ${selected.size} pieces per pack`:selected.product;
+  const when=date?new Intl.DateTimeFormat('en-IN',{dateStyle:'medium',timeStyle:'short'}).format(new Date(date)):'';
+  const zone=Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const message=`Namaste! I'd like a quote for ${description}. ${unitLabel}: ${quantity}. ${dateLabel}: ${when} (${zone}). ${isTiffin?`Meal: ${meal}. Plan: ${frequency}. `:''}${isService?`Service area / venue: ${locality}. `:`Preference: ${fulfilment==='pickup'?'Pickup':'Delivery enquiry'}. ${needsArea?`Delivery area: ${locality}. `:''}`}${notes?`Details: ${notes}. `:''}${selected?.size?`Website guide estimate: ${money(estimatedTotal)}; please confirm the final price. `:''}Please confirm availability, quantity/pack options, the 24-hour lead time and any delivery or service charges. This is an enquiry, not a confirmed order. Thank you!`;
+  const href=`https://wa.me/${PHONE}?text=${encodeURIComponent(message)}`;
+  useEffect(()=>{
+    const previous=document.activeElement,overflow=document.body.style.overflow;
+    const background=[...document.querySelectorAll('body > #root > header, body > #root > main, body > #root > footer, body > #root > .announcement, body > #root > .mobile-order-bar, body > #root > .floating-order')];
+    background.forEach(n=>n.inert=true);document.body.style.overflow='hidden';box.current?.focus();
+    const viewport=window.visualViewport;
+    const resize=()=>{backdrop.current?.style.setProperty('--dialog-viewport',`${viewport?.height||innerHeight}px`);backdrop.current?.style.setProperty('--dialog-top',`${viewport?.offsetTop||0}px`);};
+    resize();viewport?.addEventListener('resize',resize);viewport?.addEventListener('scroll',resize);
+    const keydown=e=>{
+      if(e.key==='Escape')close();
+      if(e.key==='Tab'){
+        const nodes=[...box.current.querySelectorAll('button:not(:disabled),a[href],input,select,textarea')].filter(n=>n.getClientRects().length);
         const first=nodes[0],last=nodes[nodes.length-1];
-        if(e.shiftKey && (document.activeElement===first || document.activeElement===box.current)){e.preventDefault();last?.focus();}
-        else if(!e.shiftKey && document.activeElement===last){e.preventDefault();first?.focus();}
+        if(e.shiftKey&&(document.activeElement===first||document.activeElement===box.current)){e.preventDefault();last?.focus();}
+        else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}
       }
     };
     document.addEventListener('keydown',keydown);
-    return () => {document.body.style.overflow=overflow;document.removeEventListener('keydown',keydown);viewport?.removeEventListener('resize',resize);viewport?.removeEventListener('scroll',resize);previous?.focus();};
-  }, []);
-  function submit(e) {
-    e.preventDefault();
-    const next={};
-    if(!Number.isInteger(numericQuantity) || numericQuantity<1 || numericQuantity>100) next.quantity='Enter a whole number from 1 to 100. For larger orders, call us.';
-    if(!date) next.date='Choose your preferred date.';
-    else if(date<minDate) next.date='Choose tomorrow or a later date. The kitchen will confirm the 24-hour lead time.';
+    return()=>{document.body.style.overflow=overflow;background.forEach(n=>n.inert=false);document.removeEventListener('keydown',keydown);viewport?.removeEventListener('resize',resize);viewport?.removeEventListener('scroll',resize);previous?.focus();};
+  },[]);
+  useEffect(()=>{if(status)box.current.querySelector('.enquiry-result')?.focus();},[status]);
+  function changeProduct(id){setSelection(id);setQuantity(id==='catering'||id==='tiffin'?'':'1');setFulfilment(id==='tiffin'?'delivery':'pickup');setErrors({});setStatus('');}
+  function submit(e){
+    e.preventDefault();const next={};
+    if(!Number.isSafeInteger(numericQuantity)||numericQuantity<1)next.quantity='Enter a positive whole number.';
+    const requested=new Date(date).getTime();
+    if(!date)next.date='Choose your preferred date and time.';
+    else if(!Number.isFinite(requested)||requested<Date.now()+86400000)next.date='Please choose a time at least 24 hours from now.';
+    if(needsArea&&!locality.trim())next.locality=isService?'Enter your service area or venue.':'Enter your delivery area.';
     setErrors(next);
     if(Object.keys(next).length){setTimeout(()=>box.current.querySelector('[aria-invalid="true"]')?.focus(),0);return;}
-    const opened=window.open(href,'_blank');
-    if(opened) opened.opener=null;
-    setStatus(opened?'opened':'blocked');
+    const opened=window.open(href,'_blank');if(opened)opened.opener=null;setStatus(opened?'opened':'blocked');
   }
+  const error=(key)=><>{errors[key]&&<p className="field-error" id={`${key}-error`}>{errors[key]}</p>}</>;
+  const invalid=(key)=>({'aria-invalid':!!errors[key],'aria-describedby':errors[key]?`${key}-error`:undefined});
   return <div className="modal-backdrop" ref={backdrop} onClick={e=>e.target===e.currentTarget&&close()}>
     <div className="order-modal" role="dialog" aria-modal="true" aria-labelledby="order-title" aria-describedby="order-description" ref={box} tabIndex={-1}>
       <button className="close" onClick={close} aria-label="Close order enquiry"><X/></button>
-      <p className="eyebrow">DIRECTLY WITH YOUR LOCAL KITCHEN</p>
-      <h2 id="order-title">Your Modak<br/><em>order enquiry.</em></h2>
-      <p id="order-description">Choose what you’d like, then send your request on WhatsApp. The kitchen confirms the price, availability and delivery. No payment or booking happens here.</p>
-      {status ? <div className="enquiry-result" role="status">
+      <p className="eyebrow">DIRECTLY WITH YOUR LOCAL KITCHEN</p><h2 id="order-title">Let’s plan<br/><em>your order.</em></h2>
+      <p id="order-description">Send a WhatsApp enquiry for a final quote. The kitchen confirms availability, quantities, pickup or delivery and charges. Nothing is booked or paid for here.</p>
+      {status?<div className="enquiry-result" role="status" tabIndex={-1}>
         <Check size={24}/><h3>{status==='opened'?'Your enquiry is ready.':'WhatsApp didn’t open.'}</h3>
-        <p>{status==='opened'?'Finish sending the message in WhatsApp, then wait for the kitchen to confirm. Your order is not booked yet.':'Your browser may have blocked the new tab. Use the link below or call the kitchen.'}</p>
+        <p>{status==='opened'?'Send the prepared message in WhatsApp and wait for the kitchen’s confirmation. Opening WhatsApp does not place an order.':'Your browser may have blocked the new tab. Open the message below, or call the kitchen.'}</p>
         <a className="button button-dark" href={href} target="_blank" rel="noopener noreferrer">Open your WhatsApp message <ArrowUpRight size={18}/></a>
-        <button className="text-link" onClick={()=>setStatus('')}>Edit my enquiry <ArrowRight size={16}/></button>
-      </div> : <form onSubmit={submit} noValidate>
-        <label htmlFor="product-select">Product / suggested pack</label>
-        <select id="product-select" value={selection} onChange={e=>{setSelection(e.target.value);setQuantity('1');setErrors({});}}>
-          {OPTIONS.map(p=><option key={p.id} value={p.id}>{p.product}{p.size?` · ${p.size} pieces · ${money(p.price)} estimate`:''}</option>)}
+        <button className="text-link" onClick={()=>{setStatus('');setTimeout(()=>box.current.querySelector('#product-select')?.focus(),0);}}>Edit my enquiry <ArrowRight size={16}/></button>
+      </div>:<form onSubmit={submit} noValidate>
+        <label htmlFor="product-select">What would you like to enquire about?</label><select id="product-select" value={selection} onChange={e=>changeProduct(e.target.value)}>
+          <optgroup label="Modak">{[...PACKS,{id:'custom',product:'Custom Modak quantity'}].map(p=><option key={p.id} value={p.id}>{p.product}{p.size?` · ${p.size} pieces · guide ${money(p.price)}`:''}</option>)}</optgroup>
+          <optgroup label="Other products">{EXTRA.map(p=><option key={p.id} value={p.id}>{p.product}</option>)}</optgroup>
+          <optgroup label="Services"><option value="catering">Catering enquiry</option><option value="tiffin">Tiffin enquiry</option></optgroup>
         </select>
-        {selected?.size && <div className="estimate-note">Suggested pack and indicative price based on nearby menus. This business has not confirmed these options.</div>}
-        {!selected?.size && <div className="estimate-note">{selected?.price?`${selected.price} is the profile-listed range. `:''}Pack size and current price are confirmed by the kitchen.</div>}
-        <div className="order-fields">
-          <div><label htmlFor="quantity">{unitLabel} *</label><input id="quantity" type="number" inputMode="numeric" min="1" max="100" step="1" value={quantity} onChange={e=>setQuantity(e.target.value)} required aria-invalid={!!errors.quantity} aria-describedby={errors.quantity?'quantity-error':undefined}/>{errors.quantity&&<p className="field-error" id="quantity-error">{errors.quantity}</p>}</div>
-          <div><label htmlFor="date">Preferred date *</label><input id="date" type="date" min={minDate} value={date} onChange={e=>setDate(e.target.value)} required aria-invalid={!!errors.date} aria-describedby={errors.date?'date-error':undefined}/>{errors.date&&<p className="field-error" id="date-error">{errors.date}</p>}</div>
-        </div>
-        {selected?.size && <div className="estimate-total"><span>{Number.isFinite(estimatedTotal)&&numericQuantity>=1?`${selected.size*numericQuantity} Modaks · indicative total`:'Indicative total'}</span><strong>{Number.isFinite(estimatedTotal)&&numericQuantity>=1?money(estimatedTotal):'—'}</strong><small>Delivery charge, taxes and final pricing to be confirmed.</small></div>}
-        <button type="submit" className="button button-dark"><MessageCircle size={18}/> Prepare WhatsApp enquiry <ArrowUpRight size={18}/></button>
-        <small className="form-help">Please book at least 24 hours ahead. Required fields are marked *.</small>
+        <div className="estimate-note">{selected?.size?'Prices are estimates. Confirm pack sizes and the final quote with the kitchen.':selected?.price?`Price guide: ${selected.price}. Please confirm the size and final price.`:isService?'Menus, service availability and pricing are quoted for your requirements.':'Tell us your preferred quantity; the kitchen will confirm availability and the price.'}</div>
+        <div className="order-fields"><div><label htmlFor="quantity">{unitLabel} *</label><input id="quantity" type="number" inputMode="numeric" min="1" step="1" value={quantity} onChange={e=>setQuantity(e.target.value)} required {...invalid('quantity')}/>{error('quantity')}</div><div><label htmlFor="date">{dateLabel} *</label><input id="date" type="datetime-local" min={minTime} value={date} onChange={e=>setDate(e.target.value)} required {...invalid('date')}/>{error('date')}</div></div>
+        {isTiffin&&<div className="order-fields"><div><label htmlFor="meal">Meal</label><select id="meal" value={meal} onChange={e=>setMeal(e.target.value)}><option>Lunch</option><option>Dinner</option><option>Lunch and dinner</option></select></div><div><label htmlFor="frequency">Plan enquiry</label><select id="frequency" value={frequency} onChange={e=>setFrequency(e.target.value)}><option>One day</option><option>Weekly</option><option>Monthly</option></select></div></div>}
+        {!isService&&<div className="form-row"><label htmlFor="fulfilment">Pickup or delivery?</label><select id="fulfilment" value={fulfilment} onChange={e=>{setFulfilment(e.target.value);setErrors({...errors,locality:undefined});}}><option value="pickup">Pickup from Shivatej Nagar</option><option value="delivery">Delivery enquiry — confirm area and charge</option></select></div>}
+        {needsArea&&<div className="form-row"><label htmlFor="locality">{isService?'Service area / venue':'Delivery area'} *</label><input id="locality" type="text" autoComplete="address-level2" maxLength="200" value={locality} placeholder="e.g. Shivatej Nagar, Pimpri-Chinchwad" onChange={e=>setLocality(e.target.value)} required {...invalid('locality')}/>{error('locality')}<small className="form-help">We’ll confirm whether your area can be served and any additional charge.</small></div>}
+        {isService&&<div className="form-row"><label htmlFor="enquiry-notes">{isCatering?'Occasion and menu preferences (optional)':'Dietary or meal preferences (optional)'}</label><textarea id="enquiry-notes" value={notes} maxLength="500" rows="2" onChange={e=>setNotes(e.target.value)}/></div>}
+        {selected?.size&&<div className="estimate-total"><span>{Number.isSafeInteger(numericQuantity)&&numericQuantity>0?`${selected.size*numericQuantity} Modaks · estimated total`:'Estimated total'}</span><strong>{Number.isSafeInteger(numericQuantity)&&numericQuantity>0?money(estimatedTotal):'—'}</strong><small>Final price and delivery or service charges confirmed by the kitchen.</small></div>}
+        <button type="submit" className="button button-dark"><MessageCircle size={18}/> Prepare WhatsApp enquiry <ArrowUpRight size={18}/></button><small className="form-help">At least 24 hours’ notice. Required fields are marked *.<br/>Minimum order quantities are confirmed by the kitchen.</small>
       </form>}
       <a className="modal-call" href="tel:+919503502689"><Phone size={17}/> Prefer to call? +91 95035 02689</a>
     </div>
   </div>;
 }
+
 function Experience() {
   const section=useRef(null),canvas=useRef(null),cache=useRef([]),progressBar=useRef(null),render=useRef(()=>{});
   const [manual,setManual]=useState(0),[ready,setReady]=useState(false),[reduced,setReduced]=useState(false),[failed,setFailed]=useState(false);
@@ -143,20 +154,21 @@ function Experience() {
 }
 function Catalogue({open}) {
   return <section id="offerings" className="offerings section-pad">
-    <div className="section-heading"><div><p className="eyebrow">CHOOSE YOUR SWEET MOMENT</p><h2>Good things.<br/><em>Beautifully shared.</em></h2></div><p>Classic coconut-jaggery Modak. Choose a suggested pack, then confirm your order with the kitchen.</p></div>
-    <div className="catalogue-notice"><span>INDICATIVE PROTOTYPE MENU</span><p>Modak packs and prices below are suggested from nearby menus, and are awaiting this business’s confirmation.</p></div>
+    <div className="section-heading"><div><p className="eyebrow">CHOOSE YOUR SWEET MOMENT</p><h2>Good things.<br/><em>Beautifully shared.</em></h2></div><p>Classic coconut-jaggery Modak. Choose your quantity, then request a final quote from the kitchen.</p></div>
+    <div className="catalogue-notice"><span>PRICE & ORDER GUIDE</span><p>Estimated prices are shown to help you plan. Pack sizes, final prices and availability are confirmed by the kitchen before you book.</p></div>
     <div className="product-grid">{PACKS.map(p=><article className="product-card" key={p.id}>
-      <div className="product-image"><img src={`/assets/${p.image}.jpg`} alt={`Business profile photo of ${p.product}: ${p.size===5?'single handcrafted Modak':p.size===11?'Modak on a banana leaf':'a Modak platter'}`} loading="lazy"/><span>{p.tag}</span></div>
+      <div className="product-image"><img src={`/assets/${p.image}.jpg`} alt={`Handcrafted ${p.product}: ${p.size===5?'single handcrafted Modak':p.size===11?'Modak on a banana leaf':'a Modak platter'}`} loading="lazy"/><span>{p.tag}</span></div>
       <div className="product-label"><h3>{p.name}</h3><span className="veg-mark" aria-label="Vegetarian"/></div>
-      <span className="product-name">{p.product}</span><p>{p.description}</p>
-      <div className="pack-details"><span>Suggested pack · {p.size} pieces</span><span>Classic coconut & jaggery</span></div>
-      <div className="product-price"><strong>{money(p.price)}</strong><span>indicative / pack<br/>{money(p.price/p.size)} per piece</span></div>
-      <button className="button button-dark" onClick={()=>open(p.id)}>Order now <ArrowUpRight size={18}/></button><small className="card-order-note">WhatsApp enquiry · final price confirmed by kitchen</small>
+      <span className="product-name">Enquire for {p.size} pieces</span><p>{p.description}</p>
+      <div className="pack-details"><span>Order quantity · {p.size} pieces</span><span>Classic coconut & jaggery</span></div>
+      <div className="product-price"><strong>{money(p.price)}</strong><span>estimated / pack<br/>{money(p.price/p.size)} per piece</span></div>
+      <button className="button button-dark" onClick={()=>open(p.id)}>Request a quote <ArrowUpRight size={18}/></button><small className="card-order-note">WhatsApp enquiry · final price confirmed by kitchen</small>
     </article>)}</div>
-    <details className="pricing-reference"><summary>How we estimated the Modak prices</summary><p>Suggested packs use ₹45 per piece. Nearby <a href="https://www.zomato.com/pune/ukadiche-modak-bhosari/order" target="_blank" rel="noopener noreferrer">Bhosari menu listings</a> show ₹229 for 5 and ₹489 for 11; <a href="https://ghargutigodwa.com/en/products/ukdiche-modak" target="_blank" rel="noopener noreferrer">Gharguti Godwa’s Pune menu</a> lists ₹35 per piece. These are different businesses. Their listings inform the prototype only; pack availability, final prices and delivery charges must be confirmed with Ukadiche Modak.</p></details>
-    <div className="extra-heading"><h3>Also from our kitchen</h3><span>FROM THE BUSINESS PROFILE</span></div>
-    <div className="extra-grid">{EXTRA.map(p=><article className={`extra-card ${p.id}`} key={p.id}><div className="extra-image"><img src={`/assets/${p.image}.jpg`} alt={`${p.product} photograph from the business profile`} loading="lazy"/></div><div><h3>{p.product}</h3><p>{p.description}</p><strong>{p.price}</strong><small>Profile-listed range · pack size and variants to be confirmed</small><button className="text-link" onClick={()=>open(p.id)}>Enquire on WhatsApp <ArrowUpRight size={17}/></button></div></article>)}</div>
-    <div className="catalogue-footer"><span>Planning something bigger?</span><button className="text-link" onClick={()=>open('custom')}>Custom Modak quantity <ArrowRight size={16}/></button><button className="text-link" onClick={()=>open('catering')}>Catering & tiffin <ArrowRight size={16}/></button></div>
+    <div className="extra-heading"><h3>Also from our kitchen</h3><span>MORE FROM OUR MENU</span></div>
+    <div className="extra-grid">{EXTRA.map(p=><article className={`extra-card ${p.id}`} key={p.id}><div className="extra-image"><img src={`/assets/${p.image}.jpg`} alt={`${p.product} on our menu`} loading="lazy"/></div><div><h3>{p.product}</h3><p>{p.description}</p><strong>{p.price}</strong><small>Price guide · size and final price confirmed on enquiry</small><button className="text-link" onClick={()=>open(p.id)}>Enquire on WhatsApp <ArrowUpRight size={17}/></button></div></article>)}</div>
+    <div className="catalogue-footer"><span>Planning something bigger?</span><button className="text-link" onClick={()=>open('custom')}>Custom Modak quantity <ArrowRight size={16}/></button></div>
+    <div className="services-heading"><p className="eyebrow">SERVICES, PLANNED AROUND YOU</p><h3>For your gathering. For your everyday.</h3></div>
+    <div className="services-grid"><article><h3>Catering</h3><p>Tell us your occasion, guest count and venue. We’ll discuss the menu, availability and quote.</p><button className="text-link" onClick={()=>open('catering')}>Enquire about catering <ArrowUpRight size={17}/></button></article><article><h3>Tiffin services</h3><p>Share your area, meal preference and schedule. Ask the kitchen about plans and pricing.</p><button className="text-link" onClick={()=>open('tiffin')}>Enquire about tiffin <ArrowUpRight size={17}/></button></article></div>
   </section>;
 }
 function App() {
@@ -169,15 +181,15 @@ function App() {
       <button className="nav-order" onClick={()=>open()}>Order on WhatsApp <ArrowUpRight size={17}/></button><button className="menu-toggle" aria-label={menu?'Close menu':'Open menu'} aria-expanded={menu} onClick={()=>setMenu(!menu)}>{menu?<X/>:<Menu/>}</button>
     </header>
     <main>
-      <section className="hero"><div className="hero-copy"><p className="eyebrow"><span className="line"/> FROM MAHARASHTRA, WITH LOVE</p><h1>A little fold<br/>of <em>tradition.</em></h1><p className="hero-description">Traditional steamed Modak with coconut-jaggery filling. Pre-order from our Pimpri-Chinchwad kitchen, at least 24 hours ahead.</p><div className="hero-actions"><a className="button button-dark" href="#offerings">Explore Modaks <ArrowRight size={18}/></a><button className="button button-secondary" onClick={()=>open()}><MessageCircle size={17}/> Order on WhatsApp</button></div><a href={MAP} target="_blank" rel="noopener noreferrer" className="rating"><span className="rating-number">4.8</span><div><span className="stars">★★★★★</span><span>136 Google reviews · profile recording</span></div><ArrowUpRight size={16}/></a></div><div className="hero-art"><div className="hero-photo"><img src="/assets/hero.jpg" alt="Traditional steamed Modak on a banana leaf" fetchPriority="high"/></div><span className="hero-index">उकडीचे मोदक · THE MAHARASHTRIAN CLASSIC</span></div><div className="hero-bottom"><span>PIMPRI-CHINCHWAD · MAHARASHTRA</span><a href="#offerings">FIND YOUR SWEET MOMENT <ArrowDown size={14}/></a></div></section>
+      <section className="hero"><div className="hero-copy"><p className="eyebrow"><span className="line"/> FROM MAHARASHTRA, WITH LOVE</p><h1>A little fold<br/>of <em>tradition.</em></h1><p className="hero-description">Traditional steamed Modak with coconut-jaggery filling. Pre-order from our Pimpri-Chinchwad kitchen, at least 24 hours ahead.</p><div className="hero-actions"><a className="button button-dark" href="#offerings">Explore Modaks <ArrowRight size={18}/></a><button className="button button-secondary" onClick={()=>open()}><MessageCircle size={17}/> Order on WhatsApp</button></div><a href={MAP} target="_blank" rel="noopener noreferrer" className="rating"><span className="rating-number">4.8</span><div><span className="stars">★★★★★</span><span>Google customer rating</span></div><ArrowUpRight size={16}/></a></div><div className="hero-art"><div className="hero-photo"><img src="/assets/hero.jpg" alt="Traditional steamed Modak on a banana leaf" fetchPriority="high"/></div><span className="hero-index">उकडीचे मोदक · THE MAHARASHTRIAN CLASSIC</span></div><div className="hero-bottom"><span>PIMPRI-CHINCHWAD · MAHARASHTRA</span><a href="#offerings">FIND YOUR SWEET MOMENT <ArrowDown size={14}/></a></div></section>
       <Catalogue open={open}/>
       <Experience/>
-      <section id="story" className="story section-pad"><div className="story-photo"><img src="/assets/platter.jpg" alt="The business’s handmade Modak arranged on banana leaves" loading="lazy"/></div><div className="story-copy"><p className="eyebrow">WHY OUR KITCHEN? · आपल्या घरची चव</p><h2>Your local kitchen.<br/><em>A familiar favourite.</em></h2><p>Find us at Polite Hermitage in Shivatej Nagar. Our customers come for steamed rice-flour Modak with coconut-jaggery filling, enjoyed warm with ghee. The owner’s profile describes eleven years in the business and a kitchen that has grown into catering and tiffin services.</p><ul className="story-highlights"><li><Leaf size={19}/><span><strong>The classic combination</strong>Rice flour, coconut and jaggery.</span></li><li><Heart size={19}/><span><strong>For your occasion</strong>Custom Modak quantities and catering enquiries.</span></li><li><Check size={19}/><span><strong>Plan a little ahead</strong>The kitchen asks for at least 24 hours’ notice.</span></li></ul><a className="text-link" href={MAP} target="_blank" rel="noopener noreferrer">Visit our neighbourhood kitchen <ArrowUpRight size={17}/></a></div></section>
-      <section id="reviews" className="reviews section-pad"><div className="section-heading"><div><p className="eyebrow">REAL CUSTOMERS. KIND WORDS.</p><h2>Loved, one bite<br/><em>at a time.</em></h2></div><a className="review-score" href={MAP} target="_blank" rel="noopener noreferrer"><strong>4.8<span>/5</span></strong><span className="stars">★★★★★</span><small>136 reviews on Google <ArrowUpRight size={14}/></small></a></div><div className="review-grid">{[{name:'Taniksha Patil',quote:'Absolutely delicious!',initials:'TP'},{name:'Niranjan Tilekar',quote:'All time favorite Ukadiche Modak and a must try destination without doubt.',initials:'NT'},{name:'Santosh Kulkarni',quote:'Coming again and again. Hot n sweet Modak supplied.',initials:'SK'}].map(r=><article className="review-card" key={r.name}><div className="review-top"><span className="stars">★★★★★</span><span className="google-g" aria-label="Google">G</span></div><blockquote>“{r.quote}”</blockquote><div className="review-person"><span>{r.initials}</span><div><strong>{r.name}</strong><small>Google review excerpt</small></div></div></article>)}</div><div className="reviews-foot"><span>Rating and excerpts from the supplied Google Business Profile recording; counts may change.</span><a className="text-link" href={MAP} target="_blank" rel="noopener noreferrer">Read all Google reviews <ArrowUpRight size={17}/></a></div></section>
-      <section id="order" className="order-section section-pad"><p className="eyebrow">A SIMPLE WAY TO SOMETHING SWEET</p><h2>Your next sweet moment.<br/><em>Just a conversation away.</em></h2><ol className="order-process"><li><span>01</span><strong>Choose your Modaks</strong><p>Select a suggested pack or custom quantity.</p></li><li><span>02</span><strong>Send a WhatsApp enquiry</strong><p>Share your preferred date with the kitchen.</p></li><li><span>03</span><strong>Confirm directly</strong><p>Agree on price, availability and pickup or delivery.</p></li></ol><button className="button button-cream" onClick={()=>open()}><MessageCircle size={18}/> Enquire on WhatsApp <ArrowUpRight size={18}/></button><small>Please book 24 hours ahead. Delivery areas and charges confirmed by the kitchen.</small></section>
-      <section id="visit" className="visit section-pad"><div><p className="eyebrow">COME SAY NAMASTE</p><h2>Your neighbourhood<br/><em>sweet spot.</em></h2></div><div className="visit-details"><p><MapPin size={20}/><span>Shop No. 10, Polite Hermitage<br/>Shivtej Nagar Road, Shivatej Nagar<br/>Pimpri-Chinchwad, Maharashtra 411019</span></p><a href="tel:+919503502689"><Phone size={18}/> +91 95035 02689</a><a className="text-link" href={MAP} target="_blank" rel="noopener noreferrer">Get directions on Google Maps <ArrowUpRight size={17}/></a><small>Delivery and on-site services · Free street parking<br/>The profile recording lists an 8 pm closing time. Call to confirm today’s hours.</small></div></section>
+      <section id="story" className="story section-pad"><div className="story-photo"><img src="/assets/platter.jpg" alt="The business’s handmade Modak arranged on banana leaves" loading="lazy"/></div><div className="story-copy"><p className="eyebrow">WHY OUR KITCHEN? · आपल्या घरची चव</p><h2>Your local kitchen.<br/><em>A familiar favourite.</em></h2><p>Find us at Polite Hermitage in Shivatej Nagar. Our customers come for steamed rice-flour Modak with coconut-jaggery filling, enjoyed warm with ghee. Alongside Modak, ask us about catering for your gatherings and tiffin services for everyday meals.</p><ul className="story-highlights"><li><Leaf size={19}/><span><strong>The classic combination</strong>Rice flour, coconut and jaggery.</span></li><li><Heart size={19}/><span><strong>For your occasion</strong>Custom Modak quantities and catering enquiries.</span></li><li><Check size={19}/><span><strong>Plan a little ahead</strong>The kitchen asks for at least 24 hours’ notice.</span></li></ul><a className="text-link" href={MAP} target="_blank" rel="noopener noreferrer">Visit our neighbourhood kitchen <ArrowUpRight size={17}/></a></div></section>
+      <section id="reviews" className="reviews section-pad"><div className="section-heading"><div><p className="eyebrow">REAL CUSTOMERS. KIND WORDS.</p><h2>Loved, one bite<br/><em>at a time.</em></h2></div><a className="review-score" href={MAP} target="_blank" rel="noopener noreferrer"><strong>4.8<span>/5</span></strong><span className="stars">★★★★★</span><small>Customer reviews on Google <ArrowUpRight size={14}/></small></a></div><div className="review-grid">{[{name:'Taniksha Patil',quote:'Absolutely delicious!',initials:'TP'},{name:'Niranjan Tilekar',quote:'All time favorite Ukadiche Modak and a must try destination without doubt.',initials:'NT'},{name:'Santosh Kulkarni',quote:'Coming again and again. Hot n sweet Modak supplied.',initials:'SK'}].map(r=><article className="review-card" key={r.name}><div className="review-top"><span className="stars">★★★★★</span><span className="google-g" aria-label="Google">G</span></div><blockquote>“{r.quote}”</blockquote><div className="review-person"><span>{r.initials}</span><div><strong>{r.name}</strong><small>Google review excerpt</small></div></div></article>)}</div><div className="reviews-foot"><span>Real customer reviews. See the latest feedback on Google.</span><a className="text-link" href={MAP} target="_blank" rel="noopener noreferrer">Read all Google reviews <ArrowUpRight size={17}/></a></div></section>
+      <section id="order" className="order-section section-pad"><p className="eyebrow">A SIMPLE WAY TO SOMETHING SWEET</p><h2>Your next sweet moment.<br/><em>Just a conversation away.</em></h2><ol className="order-process"><li><span>01</span><strong>Choose your Modaks</strong><p>Choose your product and preferred quantity.</p></li><li><span>02</span><strong>Send a WhatsApp enquiry</strong><p>Share your preferred date with the kitchen.</p></li><li><span>03</span><strong>Confirm directly</strong><p>Agree on price, availability and pickup or delivery.</p></li></ol><button className="button button-cream" onClick={()=>open()}><MessageCircle size={18}/> Enquire on WhatsApp <ArrowUpRight size={18}/></button><small>Please book 24 hours ahead. Delivery areas and charges confirmed by the kitchen.</small></section>
+      <section id="visit" className="visit section-pad"><div><p className="eyebrow">COME SAY NAMASTE</p><h2>Your neighbourhood<br/><em>sweet spot.</em></h2></div><div className="visit-details"><p><MapPin size={20}/><span>Shop No. 10, Polite Hermitage<br/>Shivtej Nagar Road, Shivatej Nagar<br/>Pimpri-Chinchwad, Maharashtra 411019</span></p><a href="tel:+919503502689"><Phone size={18}/> +91 95035 02689</a><a className="text-link" href={MAP} target="_blank" rel="noopener noreferrer">Get directions on Google Maps <ArrowUpRight size={17}/></a><small>Delivery and on-site services · Free street parking<br/>Please call to confirm today’s opening hours and order availability.</small></div></section>
     </main>
-    <footer><a className="brand" href="#"><Mark/><div><strong>Ukadiche Modak</strong><span>उकडीचे मोदक</span></div></a><span>A little fold of tradition. A little taste of home.</span><a href="#">BACK TO TOP ↑</a><div className="footer-note">Website prototype · Business details and reviews from the supplied profile recording. Suggested Modak packs and prices are indicative. Cinematic imagery from the supplied animation.</div></footer>
+    <footer><a className="brand" href="#"><Mark/><div><strong>Ukadiche Modak</strong><span>उकडीचे मोदक</span></div></a><span>A little fold of tradition. A little taste of home.</span><a href="#">BACK TO TOP ↑</a><div className="footer-note">© {new Date().getFullYear()} Ukadiche Modak · Pimpri-Chinchwad · All orders confirmed directly with the kitchen.</div></footer>
     <div className="mobile-order-bar"><a href="#offerings">Explore products</a><button onClick={()=>open()}><MessageCircle size={18}/> Order on WhatsApp</button></div>
     <button className="floating-order" aria-label="Enquire on WhatsApp" onClick={()=>open()}><MessageCircle size={23}/><span>Order on WhatsApp</span></button>
     {order&&<Order product={order} close={()=>setOrder(null)}/>}
